@@ -1,10 +1,8 @@
 ﻿using System;
-using System.Buffers.Binary;
-using System.Net;
 
 namespace AntiDDoS.Tokens
 {
-    internal sealed class SourceEngineQuery : HmacTokenProvider<uint>
+    internal sealed class SourceEngineQuery
     {
         public static readonly SourceEngineQuery Instance = new();
 
@@ -12,33 +10,21 @@ namespace AntiDDoS.Tokens
 
         private SourceEngineQuery() { }
 
-        public override uint Generate(IPEndPoint point) =>
-            SlotHash(point.Address, CurrentSlot());
+        public uint Generate(uint ipv4) =>
+            SlotHash(ipv4, CurrentSlot());
 
-        public override bool Validate(IPEndPoint point, uint token)
+        public bool Validate(uint ipv4, uint token)
         {
             long slot = CurrentSlot();
 
-            return SlotHash(point.Address, slot) == token
-                || SlotHash(point.Address, slot - 1) == token;
+            return SlotHash(ipv4, slot) == token
+                || SlotHash(ipv4, slot - 1) == token;
         }
+
+        private static uint SlotHash(uint ipv4, long slot) =>
+            (uint)SipHash24Provider.Hash(ipv4, slot);
 
         private static long CurrentSlot() =>
             DateTimeOffset.UtcNow.ToUnixTimeSeconds() / TimeWindowSeconds;
-
-        private uint SlotHash(IPAddress ip, long timeSlot)
-        {
-            Span<byte> ipBytes = stackalloc byte[16];
-            ip.TryWriteBytes(ipBytes, out int ipLength);
-
-            Span<byte> buffer = stackalloc byte[16 + sizeof(long)];
-            ipBytes[..ipLength].CopyTo(buffer);
-            BinaryPrimitives.WriteInt64LittleEndian(buffer[ipLength..], timeSlot);
-
-            Span<byte> hash = stackalloc byte[32];
-            ComputeHash(buffer[..(ipLength + sizeof(long))], hash);
-
-            return BinaryPrimitives.ReadUInt32LittleEndian(hash);
-        }
     }
 }

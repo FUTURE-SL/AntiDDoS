@@ -8,7 +8,6 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 
 namespace AntiDDoS.Patches.AntiSpoofing
 {
@@ -79,11 +78,11 @@ namespace AntiDDoS.Patches.AntiSpoofing
 
             if (nonce == 0 || challenge.IsEmpty)
             {
-                SendChallengeRequest(__instance, remoteEndPoint, connTime);
+                SendChallengeRequest(__instance, remoteEndPoint, connTime, ipKey);
             }
             else
             {
-                if (!ChallengeResponse.Instance.Validate(remoteEndPoint, challenge))
+                if (!ChallengeResponse.Instance.Validate(ipKey, challenge))
                 {
                     __instance.PoolRecycle(packet);
                     return false;
@@ -97,12 +96,9 @@ namespace AntiDDoS.Patches.AntiSpoofing
             return false;
         }
 
-        private static uint IpKey(IPAddress ip)
-        {
-            Span<byte> b = stackalloc byte[4];
-            ip.TryWriteBytes(b, out _);
-            return BinaryPrimitives.ReadUInt32LittleEndian(b);
-        }
+#pragma warning disable CS0618
+        private static uint IpKey(IPAddress ip) => (uint)ip.Address;
+#pragma warning restore CS0618
 
         private static bool IsSourceEngineQuery(ReadOnlySpan<byte> data) =>
             data.Length >= SeqChallengeSize &&
@@ -120,11 +116,13 @@ namespace AntiDDoS.Patches.AntiSpoofing
 
             ReadOnlySpan<byte> afterNull = payload[(nullIdx + 1)..];
 
+            uint ipKey = IpKey(ep.Address);
+
             if (afterNull.Length >= SeqResponseTokenLength)
             {
                 uint response = BinaryPrimitives.ReadUInt32LittleEndian(afterNull);
 
-                if (SourceEngineQuery.Instance.Validate(ep, response))
+                if (SourceEngineQuery.Instance.Validate(ipKey, response))
                     instance._udpSocketv4.SendTo(SteamServerInfo.Serialize(), SocketFlags.None, ep);
                 else
                     NetDebug.WriteError($"[SEQ] Bad HMAC from {ep}");
@@ -138,7 +136,7 @@ namespace AntiDDoS.Patches.AntiSpoofing
                 Span<byte> span = buf.AsSpan(0, SeqChallengeSize);
                 BinaryPrimitives.WriteUInt32LittleEndian(span, 0xFFFFFFFF);
                 span[4] = SeqChallenge;
-                BinaryPrimitives.WriteUInt32LittleEndian(span[5..], SourceEngineQuery.Instance.Generate(ep));
+                BinaryPrimitives.WriteUInt32LittleEndian(span[5..], SourceEngineQuery.Instance.Generate(ipKey));
 
                 instance._udpSocketv4.SendTo(buf, 0, SeqChallengeSize, SocketFlags.None, ep);
             }
@@ -181,7 +179,7 @@ namespace AntiDDoS.Patches.AntiSpoofing
             return true;
         }
 
-        private static void SendChallengeRequest(LiteNetManager instance, IPEndPoint ep, ReadOnlySpan<byte> connTime)
+        private static void SendChallengeRequest(LiteNetManager instance, IPEndPoint ep, ReadOnlySpan<byte> connTime, uint ipKey)
         {
             byte[] buf = ArrayPool<byte>.Shared.Rent(ChallengeReplySize);
             try
@@ -201,7 +199,7 @@ namespace AntiDDoS.Patches.AntiSpoofing
                 BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(cur, sizeof(ushort)), ChallengeResponse.TokenSize);
                 cur += sizeof(ushort);
 
-                ChallengeResponse.Instance.GenerateTo(ep, span.Slice(cur, ChallengeResponse.TokenSize));
+                ChallengeResponse.Instance.GenerateTo(ipKey, span.Slice(cur, ChallengeResponse.TokenSize));
 
                 instance._udpSocketv4.SendTo(buf, 0, ChallengeReplySize, SocketFlags.None, ep);
             }

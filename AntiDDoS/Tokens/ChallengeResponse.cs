@@ -1,11 +1,9 @@
 ﻿using System;
 using System.Buffers.Binary;
-using System.Net;
-using System.Security.Cryptography;
 
 namespace AntiDDoS.Tokens
 {
-    internal sealed class ChallengeResponse : HmacTokenProvider<byte[]>
+    internal sealed class ChallengeResponse
     {
         public static readonly ChallengeResponse Instance = new();
 
@@ -14,32 +12,20 @@ namespace AntiDDoS.Tokens
         internal const int TokenSize = 10;
 
         private const int TimestampSize = sizeof(ushort);
-        private const int SignatureSize = 8;
         private const int SignatureOffset = TimestampSize;
 
         private ChallengeResponse() { }
 
-        public void GenerateTo(IPEndPoint endPoint, Span<byte> destination)
+        public void GenerateTo(uint ipv4, Span<byte> destination)
         {
             ushort timestamp = CurrentTimeShort();
             BinaryPrimitives.WriteUInt16LittleEndian(destination, timestamp);
 
-            Span<byte> hash = stackalloc byte[32];
-            BuildAndHash(endPoint.Address, timestamp, hash);
-            hash[..SignatureSize].CopyTo(destination[SignatureOffset..]);
+            ulong hash = SipHash24Provider.Hash(ipv4, timestamp);
+            BinaryPrimitives.WriteUInt64LittleEndian(destination[SignatureOffset..], hash);
         }
 
-        public override byte[] Generate(IPEndPoint endPoint)
-        {
-            byte[] token = new byte[TokenSize];
-            GenerateTo(endPoint, token);
-            return token;
-        }
-
-        public override bool Validate(IPEndPoint point, byte[] token) =>
-            Validate(point, token.AsSpan());
-
-        public bool Validate(IPEndPoint point, ReadOnlySpan<byte> token)
+        public bool Validate(uint ipv4, ReadOnlySpan<byte> token)
         {
             if (token.Length != TokenSize)
                 return false;
@@ -50,27 +36,13 @@ namespace AntiDDoS.Tokens
             if (age > Ttl)
                 return false;
 
-            Span<byte> expectedHash = stackalloc byte[32];
-            BuildAndHash(point.Address, tokenTime, expectedHash);
+            ulong expected = SipHash24Provider.Hash(ipv4, tokenTime);
+            ulong actual = BinaryPrimitives.ReadUInt64LittleEndian(token[SignatureOffset..]);
 
-            return CryptographicOperations.FixedTimeEquals(
-                token[SignatureOffset..TokenSize],
-                expectedHash[..SignatureSize]);
+            return expected == actual;
         }
 
         private static ushort CurrentTimeShort() =>
             (ushort)(DateTimeOffset.UtcNow.ToUnixTimeSeconds() & 0xFFFF);
-
-        private void BuildAndHash(IPAddress ip, ushort timeShort, Span<byte> destination)
-        {
-            Span<byte> ipBytes = stackalloc byte[16];
-            ip.TryWriteBytes(ipBytes, out int ipLength);
-
-            Span<byte> buffer = stackalloc byte[16 + TimestampSize];
-            ipBytes[..ipLength].CopyTo(buffer);
-            BinaryPrimitives.WriteUInt16LittleEndian(buffer[ipLength..], timeShort);
-
-            ComputeHash(buffer[..(ipLength + TimestampSize)], destination);
-        }
     }
 }
