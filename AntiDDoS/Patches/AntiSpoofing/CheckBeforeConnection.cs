@@ -8,6 +8,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 
 namespace AntiDDoS.Patches.AntiSpoofing
 {
@@ -37,7 +38,7 @@ namespace AntiDDoS.Patches.AntiSpoofing
             DisconnectHeaderSize + 1 + sizeof(int) + sizeof(ushort) + ChallengeResponse.TokenSize;
         private const int AcceptedSize = DisconnectHeaderSize + 1;
 
-        private static readonly HashSet<IPAddress> _whiteList = new();
+        private static readonly HashSet<uint> _whiteList = new();
 
         private static bool Prefix(LiteNetManager __instance, NetPacket packet, IPEndPoint remoteEndPoint)
         {
@@ -55,7 +56,9 @@ namespace AntiDDoS.Patches.AntiSpoofing
                 return false;
             }
 
-            if (_whiteList.Contains(remoteEndPoint.Address))
+            uint ipKey = IpKey(remoteEndPoint.Address);
+
+            if (_whiteList.Contains(ipKey))
                 return true;
 
             if (packet.Property != PacketProperty.ConnectRequest)
@@ -86,12 +89,19 @@ namespace AntiDDoS.Patches.AntiSpoofing
                     return false;
                 }
 
-                _whiteList.Add(remoteEndPoint.Address);
+                _whiteList.Add(ipKey);
                 SendAccepted(__instance, remoteEndPoint, connTime);
             }
 
             __instance.PoolRecycle(packet);
             return false;
+        }
+
+        private static uint IpKey(IPAddress ip)
+        {
+            Span<byte> b = stackalloc byte[4];
+            ip.TryWriteBytes(b, out _);
+            return BinaryPrimitives.ReadUInt32LittleEndian(b);
         }
 
         private static bool IsSourceEngineQuery(ReadOnlySpan<byte> data) =>
