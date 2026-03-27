@@ -2,6 +2,11 @@
 A high-performance **DDoS mitigation layer** built for the backend of **SCP: Secret Laboratory**, powered by the **LabAPI** framework.  
 This module focuses on *stateless integrity*, *optimizations*, and *robust exploit prevention* without introducing latency or instability.
 
+⚠️ This plugin will not protect you from the following attacks:
+- Bandwidth saturation
+- Clients with real (non-spoofed) IP addresses (consider using iptables protection below to counter this)
+- Spoofing attacks that exceed your CPU's processing capacity (the plugin is technically capable of handling attacks only within a single CPU thread)
+
 ---
 
 👉 You can additionally protect your server using iptables rules here:
@@ -11,12 +16,12 @@ This module focuses on *stateless integrity*, *optimizations*, and *robust explo
 
 ## ✨ Features
 
-### 🔐 Stateless Anti-Spoofing (HMAC Challenge–Response)
-- Implements a **stateless HMAC-based challenge–response system** to filter spoofed or malicious connection attempts.
+### 🔐 Stateless Anti-Spoofing (SipHash-2-4 Challenge–Response)
+- Implements a **stateless challenge–response system** to filter spoofed or malicious connection attempts.
 - Effectively mitigates spoof-based DDoS and connection floods.
 
 ### 🧠 Rewritten Source Engine Query System
-- The Source Engine Query protocol is **fully reimplemented** under the stateless HMAC model.
+- The Source Engine Query protocol is **fully reimplemented** under the stateless SipHash-2-4 model.
 - Protects against query-flood attacks while maintaining compatibility and fast response times.
 
 ### ⚙️ Network thread safety control
