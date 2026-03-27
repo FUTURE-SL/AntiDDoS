@@ -1,4 +1,4 @@
-﻿using System;
+﻿using AntiDDoS.Patches.AntiSpoofing;
 
 namespace AntiDDoS.Tokens
 {
@@ -25,6 +25,6 @@ namespace AntiDDoS.Tokens
             (uint)SipHash24Provider.Hash(ipv4, slot);
 
         private static long CurrentSlot() =>
-            DateTimeOffset.UtcNow.ToUnixTimeSeconds() / TimeWindowSeconds;
+            FastClock.UnixSeconds() / TimeWindowSeconds;
     }
 }

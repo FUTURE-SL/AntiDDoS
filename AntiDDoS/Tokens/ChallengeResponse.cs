@@ -1,4 +1,5 @@
-﻿using System;
+﻿using AntiDDoS.Patches.AntiSpoofing;
+using System;
 using System.Buffers.Binary;
 
 namespace AntiDDoS.Tokens
@@ -43,6 +44,6 @@ namespace AntiDDoS.Tokens
         }
 
         private static ushort CurrentTimeShort() =>
-            (ushort)(DateTimeOffset.UtcNow.ToUnixTimeSeconds() & 0xFFFF);
+            (ushort)(FastClock.UnixSeconds() & 0xFFFF);
     }
 }
