@@ -12,7 +12,7 @@ namespace AntiDDoS
         public override string Name { get; } = nameof(AntiDDoS);
         public override string Description { get; } = "Anti-DDoS plugin related to connection attack protection + optimizations + exploit fixes.";
         public override string Author { get; } = "ФУТУР";
-        public override Version Version { get; } = new Version(1, 1);
+        public override Version Version { get; } = new Version(1, 2);
         public override Version RequiredApiVersion { get; } = new Version(LabApiProperties.CompiledVersion);
 
         public override void Enable()
