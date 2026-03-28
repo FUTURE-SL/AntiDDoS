@@ -3,7 +3,6 @@ using HarmonyLib;
 using LiteNetLib;
 using Steam;
 using System;
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Net;
@@ -36,6 +35,10 @@ namespace AntiDDoS.Patches.AntiSpoofing
         private const int ChallengeReplySize =
             DisconnectHeaderSize + 1 + sizeof(int) + sizeof(ushort) + ChallengeResponse.TokenSize;
         private const int AcceptedSize = DisconnectHeaderSize + 1;
+
+        private static readonly byte[] _challengeReplyBuffer = new byte[ChallengeReplySize];
+        private static readonly byte[] _acceptedBuffer = new byte[AcceptedSize];
+        private static readonly byte[] _seqChallengeBuffer = new byte[SeqChallengeSize];
 
         private static readonly HashSet<uint> _whiteList = new();
 
@@ -130,20 +133,14 @@ namespace AntiDDoS.Patches.AntiSpoofing
                 return;
             }
 
-            byte[] buf = ArrayPool<byte>.Shared.Rent(SeqChallengeSize);
-            try
-            {
-                Span<byte> span = buf.AsSpan(0, SeqChallengeSize);
-                BinaryPrimitives.WriteUInt32LittleEndian(span, 0xFFFFFFFF);
-                span[4] = SeqChallenge;
-                BinaryPrimitives.WriteUInt32LittleEndian(span[5..], SourceEngineQuery.Instance.Generate(ipKey));
+            byte[] buf = _seqChallengeBuffer;
+            Span<byte> span = buf.AsSpan(0, SeqChallengeSize);
 
-                instance._udpSocketv4.SendTo(buf, 0, SeqChallengeSize, SocketFlags.None, ep);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buf);
-            }
+            BinaryPrimitives.WriteUInt32LittleEndian(span, 0xFFFFFFFF);
+            span[4] = SeqChallenge;
+            BinaryPrimitives.WriteUInt32LittleEndian(span[5..], SourceEngineQuery.Instance.Generate(ipKey));
+
+            instance._udpSocketv4.SendTo(buf, 0, SeqChallengeSize, SocketFlags.None, ep);
         }
 
         private static bool TryParseChallenge(
@@ -181,55 +178,41 @@ namespace AntiDDoS.Patches.AntiSpoofing
 
         private static void SendChallengeRequest(LiteNetManager instance, IPEndPoint ep, ReadOnlySpan<byte> connTime, uint ipKey)
         {
-            byte[] buf = ArrayPool<byte>.Shared.Rent(ChallengeReplySize);
-            try
-            {
-                Span<byte> span = buf.AsSpan(0, ChallengeReplySize);
-                int cur = 0;
+            byte[] buf = _challengeReplyBuffer;
+            Span<byte> span = buf.AsSpan(0, ChallengeReplySize);
+            int cur = 0;
 
-                span[cur++] = (byte)PacketProperty.Disconnect;
-                connTime.CopyTo(span.Slice(cur, ConnectionTimeLength));
-                cur += ConnectionTimeLength;
+            span[cur++] = (byte)PacketProperty.Disconnect;
+            connTime.CopyTo(span.Slice(cur, ConnectionTimeLength));
+            cur += ConnectionTimeLength;
 
-                span[cur++] = ChallengePayloadSize;
-                span[cur++] = (byte)ChallengeType.Reply;
-                BinaryPrimitives.WriteInt32LittleEndian(span.Slice(cur, sizeof(int)), ChallengeNonce);
-                cur += sizeof(int);
+            span[cur++] = ChallengePayloadSize;
+            span[cur++] = (byte)ChallengeType.Reply;
+            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(cur, sizeof(int)), ChallengeNonce);
+            cur += sizeof(int);
 
-                BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(cur, sizeof(ushort)), ChallengeResponse.TokenSize);
-                cur += sizeof(ushort);
+            BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(cur, sizeof(ushort)), ChallengeResponse.TokenSize);
+            cur += sizeof(ushort);
 
-                ChallengeResponse.Instance.GenerateTo(ipKey, span.Slice(cur, ChallengeResponse.TokenSize));
+            ChallengeResponse.Instance.GenerateTo(ipKey, span.Slice(cur, ChallengeResponse.TokenSize));
 
-                instance._udpSocketv4.SendTo(buf, 0, ChallengeReplySize, SocketFlags.None, ep);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buf);
-            }
+            instance._udpSocketv4.SendTo(buf, 0, ChallengeReplySize, SocketFlags.None, ep);
         }
 
         private static void SendAccepted(LiteNetManager instance, IPEndPoint ep, ReadOnlySpan<byte> connTime)
         {
-            byte[] buf = ArrayPool<byte>.Shared.Rent(AcceptedSize);
-            try
-            {
-                Span<byte> span = buf.AsSpan(0, AcceptedSize);
-                int cur = 0;
+            byte[] buf = _acceptedBuffer;
+            Span<byte> span = buf.AsSpan(0, AcceptedSize);
+            int cur = 0;
 
-                span[cur++] = (byte)PacketProperty.Disconnect;
-                connTime.CopyTo(span.Slice(cur, ConnectionTimeLength));
-                cur += ConnectionTimeLength;
+            span[cur++] = (byte)PacketProperty.Disconnect;
+            connTime.CopyTo(span.Slice(cur, ConnectionTimeLength));
+            cur += ConnectionTimeLength;
 
-                span[cur++] = AcceptedPayloadSize;
-                span[cur++] = AcceptedCode;
+            span[cur++] = AcceptedPayloadSize;
+            span[cur++] = AcceptedCode;
 
-                instance._udpSocketv4.SendTo(buf, 0, AcceptedSize, SocketFlags.None, ep);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buf);
-            }
+            instance._udpSocketv4.SendTo(buf, 0, AcceptedSize, SocketFlags.None, ep);
         }
     }
 }
